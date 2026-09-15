@@ -1,5 +1,10 @@
 # ChatGPT ESA MCP Tunnel
 
+[![CI](https://github.com/fx-k/chatgpt-esa-mcp-tunnel/actions/workflows/ci.yml/badge.svg)](https://github.com/fx-k/chatgpt-esa-mcp-tunnel/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![OpenAI Tunnel Client](https://img.shields.io/badge/OpenAI%20Tunnel%20Client-v0.0.14-blue)](https://github.com/openai/tunnel-client/releases/tag/v0.0.14)
+[![mcp-server-esa](https://img.shields.io/badge/mcp--server--esa-1.1.0-orange)](https://www.npmjs.com/package/mcp-server-esa)
+
 通过 OpenAI 官方 Secure MCP Tunnel，将 Alibaba Cloud ESA MCP 私有接入 ChatGPT，并提供 Docker 部署与 `mcp-server-esa` Schema 兼容修复。
 
 > [!NOTE]
@@ -258,13 +263,16 @@ services:
 ├── .env.example
 ├── .gitignore
 ├── .dockerignore
+├── .github/workflows/ci.yml
+├── docs/architecture.md
+├── CHANGELOG.md
 ├── LICENSE
 └── THIRD_PARTY_NOTICES.md
 ```
 
 ## 版本策略
 
-当前首版会固定一组已经实际验证过的 OpenAI Tunnel Client 与 `mcp-server-esa` 版本。
+当前首版固定使用已经实际验证过的 OpenAI Tunnel Client `v0.0.14` 与 `mcp-server-esa@1.1.0`。
 
 升级依赖时建议至少重新验证：
 
@@ -274,6 +282,8 @@ services:
 4. 你实际需要的写操作
 
 如果上游 `mcp-server-esa` 已修复 Schema 问题，也可以评估移除兼容层。
+
+版本变化见 [`CHANGELOG.md`](CHANGELOG.md)。
 
 ## 上游项目
 
