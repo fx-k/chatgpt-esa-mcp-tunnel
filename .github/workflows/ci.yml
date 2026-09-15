@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 校验 Node.js 语法
+        run: node --check esa-stdio-compat.js
+
+      - name: 准备示例环境变量
+        run: cp .env.example .env
+
+      - name: 校验默认 Compose
+        run: docker compose config >/dev/null
+
+      - name: 校验代理 Compose
+        env:
+          SOCKS5_UPSTREAM: socks5://user:password@127.0.0.1:1080
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.proxy.yml \
+            config >/dev/null
+
+      - name: 构建镜像
+        run: docker compose build esa
