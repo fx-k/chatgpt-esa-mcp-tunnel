@@ -1,0 +1,38 @@
+services:
+  esa:
+    environment:
+      CONTROL_PLANE_HTTP_PROXY: http://egress-proxy:18080
+
+    depends_on:
+      - egress-proxy
+
+  egress-proxy:
+    image: gogost/gost:3.3
+    container_name: chatgpt-esa-mcp-egress
+
+    restart: unless-stopped
+
+    command:
+      - "-L"
+      - "http://:18080"
+      - "-F"
+      - "${SOCKS5_UPSTREAM:?SOCKS5_UPSTREAM is required}"
+
+    read_only: true
+
+    cap_drop:
+      - ALL
+
+    security_opt:
+      - no-new-privileges:true
+
+    pids_limit: 64
+
+    mem_limit: 32m
+    mem_reservation: 8m
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
