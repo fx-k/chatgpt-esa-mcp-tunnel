@@ -1,15 +1,15 @@
 # ChatGPT ESA MCP Tunnel
 
-Privately connect Alibaba Cloud ESA MCP to ChatGPT through OpenAI Secure MCP Tunnel, with Docker deployment and schema compatibility fixes.
+通过 OpenAI 官方 Secure MCP Tunnel，将 Alibaba Cloud ESA MCP 私有接入 ChatGPT，并提供 Docker 部署与 `mcp-server-esa` Schema 兼容修复。
 
 > [!NOTE]
-> This is an unofficial community project. It is not affiliated with or endorsed by OpenAI or Alibaba Cloud.
+> 这是一个非官方社区项目，与 OpenAI、Alibaba Cloud 均无隶属关系，也不代表其官方立场。
 
-## Why this project?
+## 为什么需要这个项目？
 
-Alibaba Cloud's official [`mcp-server-esa`](https://github.com/aliyun/mcp-server-esa) is a local **stdio MCP server**. ChatGPT cannot directly execute that local `npx` command on your server.
+Alibaba Cloud 官方的 [`mcp-server-esa`](https://github.com/aliyun/mcp-server-esa) 是一个本地 **stdio MCP Server**。ChatGPT Web 无法直接在你的服务器上执行本地 `npx` 命令，因此需要一个安全的远程桥接方式。
 
-OpenAI's official [`tunnel-client`](https://github.com/openai/tunnel-client) solves that problem without exposing a public `/mcp` endpoint:
+OpenAI 官方的 [`tunnel-client`](https://github.com/openai/tunnel-client) 可以在**不暴露公网 `/mcp` 地址**的情况下，把 ChatGPT 的 MCP 调用送到你的私有服务器：
 
 ```text
 ChatGPT
@@ -17,7 +17,7 @@ ChatGPT
    ▼
 OpenAI Secure MCP Tunnel
    ▲
-   │ outbound HTTPS
+   │ 主动出站 HTTPS
    │
 tunnel-client
    │ stdio
@@ -31,70 +31,81 @@ mcp-server-esa
 Alibaba Cloud ESA API
 ```
 
-No public MCP endpoint, reverse proxy, inbound firewall rule, or self-hosted OAuth server is required.
+默认方案不需要：
 
-## What is included?
+- 公网 MCP 域名
+- Nginx / Caddy 反向代理
+- 自建 OAuth Server
+- 对外开放入站端口
+- Cloudflare Tunnel
 
-- OpenAI `tunnel-client` runtime
+服务器只需要主动连接 OpenAI 和 Alibaba Cloud 即可。
+
+## 项目包含什么？
+
+- OpenAI `tunnel-client` Runtime
 - Alibaba Cloud `mcp-server-esa`
-- Docker / Docker Compose deployment
-- A small stdio compatibility wrapper for problematic ESA tool schemas
-- Optional HTTP-to-SOCKS5 egress bridge for controlled network environments
+- Docker / Docker Compose 部署
+- 一个轻量的 stdio Schema 兼容层
+- 可选的 HTTP → SOCKS5 出口桥接方案
 
-## Why is there a compatibility wrapper?
+## 为什么需要 `esa-stdio-compat.js`？
 
-At the time this project was created, `mcp-server-esa@1.1.0` exposed several tool schemas that strict MCP clients could reject. Examples included:
+在本项目创建时，`mcp-server-esa@1.1.0` 中存在若干会被严格 MCP Client 拒绝的 Tool Schema，例如：
 
-- invalid `type: "enum"` JSON Schema
-- `required` placed inside `properties`
-- MCP tool `annotations` nested inside `inputSchema`
-- required parameters that were not actually exposed as input properties
+- 非法 JSON Schema：`type: "enum"`
+- `required` 被错误放入 `properties`
+- MCP Tool `annotations` 被错误放入 `inputSchema`
+- `required` 引用了并未暴露给 Client 的字段
 
-`esa-stdio-compat.js` normalizes the `tools/list` response before it reaches ChatGPT.
+`esa-stdio-compat.js` 会在 `tools/list` 返回给 ChatGPT 前，对这些 Schema 做最小规范化处理。
 
-It intentionally does **not** rewrite normal `tools/call` requests or responses.
+它**不会改写正常的 `tools/call` 请求与响应**，也不会改变 Alibaba Cloud ESA API 的业务行为。
 
-Once these upstream schema issues are fixed, the compatibility layer should become a no-op and can eventually be removed.
+如果未来上游已经修复这些问题，该兼容层将基本变成 no-op，并可进一步移除。
 
-## Supported ESA capabilities
+## 支持的 ESA 能力
 
-The full `mcp-server-esa` binary exposes tools for areas including:
+完整版 `mcp-server-esa` 当前包含的能力包括但不限于：
 
 - Edge Routine
-- Routine routes and deployments
-- ESA Sites
-- DNS records
-- Certificates
+- Routine Route / Deployment
+- ESA Site
+- DNS Records
+- Certificate
 - IPv6
 - Managed Transform
 - ESA Function & Pages
 
-Actual API permissions still depend on the Alibaba Cloud AccessKey you provide.
+实际可调用权限仍取决于你为 Alibaba Cloud AccessKey 配置的 RAM 权限。
 
-## Requirements
+## 环境要求
 
-- Docker Engine with Docker Compose v2
-- Linux `amd64` host for the pinned Tunnel Client runtime used by the current Dockerfile
-- An OpenAI Secure MCP Tunnel ID
-- An OpenAI Runtime API key with the required Tunnel permissions
-- Alibaba Cloud ESA AccessKey ID / Secret
+- Docker Engine
+- Docker Compose v2
+- Linux `amd64` 主机（当前 Dockerfile 固定使用 OpenAI Tunnel Client 的 Linux amd64 Runtime）
+- 一个 OpenAI Secure MCP Tunnel ID
+- 一个可供 Tunnel Runtime 使用的 OpenAI Runtime API Key
+- Alibaba Cloud ESA AccessKey ID / AccessKey Secret
 
-## 1. Create an OpenAI Secure MCP Tunnel
+## 1. 创建 OpenAI Secure MCP Tunnel
 
-Create a tunnel in your OpenAI Platform organization/workspace and keep the resulting ID:
+在 OpenAI Platform 中创建 Tunnel，并保存生成的 Tunnel ID：
 
 ```text
 tunnel_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-Create a **Runtime API key** for the long-running tunnel client. Follow the official OpenAI Tunnel Client documentation for the current permission requirements:
+同时创建用于长期运行 `tunnel-client` 的 **Runtime API Key**。
+
+请以 OpenAI 官方文档为准确认当前 Tunnel 权限要求：
 
 - <https://github.com/openai/tunnel-client>
 - <https://github.com/openai/tunnel-client/blob/master/docs/permissions.md>
 
-Do not use an OpenAI Admin key as the long-lived runtime key.
+长期运行的 Tunnel Client 不应使用 OpenAI Admin Key。
 
-## 2. Clone and configure
+## 2. 克隆并配置
 
 ```bash
 git clone https://github.com/fx-k/chatgpt-esa-mcp-tunnel.git
@@ -103,7 +114,7 @@ cp .env.example .env
 chmod 600 .env
 ```
 
-Edit `.env`:
+编辑 `.env`：
 
 ```dotenv
 CONTROL_PLANE_TUNNEL_ID=tunnel_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -116,27 +127,27 @@ MCP_COMMAND=mcp-server-esa-chatgpt
 ESA_MCP_UPSTREAM=mcp-server-esa
 ```
 
-Never commit `.env`.
+**不要提交 `.env`。**
 
-## 3. Start
+## 3. 启动
 
 ```bash
 docker compose up -d --build
 ```
 
-Check status:
+查看状态：
 
 ```bash
 docker compose ps
 ```
 
-Check logs:
+查看日志：
 
 ```bash
 docker compose logs -f esa
 ```
 
-Typical successful startup contains messages similar to:
+正常启动时通常会看到类似：
 
 ```text
 stdio MCP command started
@@ -144,41 +155,41 @@ ESA MCP Server [esa-server] running on stdio
 tunnel metadata fetched
 ```
 
-When ChatGPT discovers tools, you may also see:
+当 ChatGPT 重新发现 Tools 时，可能还会看到：
 
 ```text
 [esa-compat] normalized tools/list: N compatibility fix(es)
 ```
 
-`N > 0` means the compatibility wrapper repaired one or more upstream schemas.
+其中 `N > 0` 表示兼容层实际修复了一个或多个上游 Schema 问题。
 
-## 4. Health checks
+## 4. 健康检查
 
-The Tunnel Client health server stays inside the container and is not published to the host.
+Tunnel Client 的健康检查端口只存在于容器内部，默认不会映射到宿主机：
 
 ```bash
 docker compose exec esa curl -fsS http://127.0.0.1:8080/healthz
 docker compose exec esa curl -fsS http://127.0.0.1:8080/readyz
 ```
 
-A ready deployment should return HTTP 200.
+正常情况下应返回 HTTP 200。
 
-## 5. Connect ChatGPT
+## 5. 在 ChatGPT 中连接
 
-In ChatGPT developer-mode app / connector settings:
+在 ChatGPT Developer Mode 的 App / Connector 配置中：
 
-1. Create or edit the app.
-2. Choose **Tunnel** as the connection type.
-3. Select the OpenAI Secure MCP Tunnel created earlier.
-4. Refresh / discover operations.
+1. 创建或编辑 App。
+2. Connection 类型选择 **Tunnel**。
+3. 选择刚才创建的 OpenAI Secure MCP Tunnel。
+4. 刷新 / Discover operations。
 
-You do **not** enter a public `/mcp` URL for this deployment.
+这里**不需要填写公网 `/mcp` URL**。
 
-## Optional: controlled SOCKS5 egress
+## 可选：通过 SOCKS5 修正受控网络出口
 
-The OpenAI Tunnel Client accepts HTTP/HTTPS proxies for its control-plane connection. It does not directly accept a `socks5://` URL as its control-plane proxy.
+OpenAI Tunnel Client 的 Control Plane Proxy 接受 HTTP / HTTPS Proxy，但不直接接受 `socks5://` URL。
 
-For enterprise networks or hosts where the intended outbound path is available through SOCKS5, this repository includes an optional GOST sidecar:
+如果你的服务器处在企业网络、复杂出口网络或其他需要通过 SOCKS5 才能走到正确出口的环境，本项目提供一个可选的 GOST Sidecar：
 
 ```text
 tunnel-client
@@ -187,19 +198,19 @@ tunnel-client
 GOST
      │ SOCKS5
      ▼
-controlled egress
+指定出口
      │
      ▼
-OpenAI control plane
+OpenAI Control Plane
 ```
 
-Add to `.env`:
+在 `.env` 中增加：
 
 ```dotenv
 SOCKS5_UPSTREAM=socks5://username:password@proxy.example.com:1080
 ```
 
-Start with the optional override:
+使用额外 Compose 文件启动：
 
 ```bash
 docker compose \
@@ -208,24 +219,35 @@ docker compose \
   up -d --build
 ```
 
-Only the Tunnel Client control-plane traffic is pointed at the internal HTTP proxy. `mcp-server-esa` can continue reaching Alibaba Cloud through the container's normal network path.
+这个模式只会把 **OpenAI Tunnel Control Plane** 流量指向内部 HTTP Proxy；`mcp-server-esa` 访问 Alibaba Cloud API 仍可走容器默认网络路径。
 
-## `folder_deploy` note
+## `folder_deploy` 的路径问题
 
-The ESA `folder_deploy` tool expects a filesystem path visible **inside the MCP container**. A folder on your laptop or host is not automatically visible to the container.
+ESA 的 `folder_deploy` Tool 要求传入一个 **MCP 容器内部可见的目录路径**。
 
-If you want to use this tool, mount the deployment directory into the `esa` service and pass the in-container path.
+也就是说，你电脑或宿主机上的目录不会自动出现在容器里。
 
-## Security
+如果需要使用这个 Tool，请自行把目标目录挂载到 `esa` 服务中，例如：
 
-- Never commit `.env`.
-- Use a dedicated OpenAI Runtime API key, not an Admin key.
-- Prefer a dedicated Alibaba Cloud identity / AccessKey with the minimum ESA permissions you need.
-- Treat the Alibaba Cloud secret, OpenAI key, and proxy credentials as secrets.
-- If a credential is ever published in Git history, rotate it; deleting the file later is not sufficient.
-- No inbound network ports are required by the default Compose deployment.
+```yaml
+services:
+  esa:
+    volumes:
+      - ./site:/workspace/site:ro
+```
 
-## Project layout
+随后将 `/workspace/site` 作为 Tool 参数传入。
+
+## 安全建议
+
+- 永远不要提交 `.env`。
+- OpenAI Tunnel Runtime 使用专门的 Runtime API Key，不要使用 Admin Key。
+- Alibaba Cloud 建议使用专门的 RAM 用户 / AccessKey，并按需授予最小 ESA 权限。
+- OpenAI Key、Alibaba Cloud AccessKey Secret、代理凭据都应视为敏感信息。
+- 如果密钥曾经进入公开 Git 历史，仅删除文件并不够，应立即轮换密钥。
+- 默认部署不需要任何公网入站端口。
+
+## 项目结构
 
 ```text
 .
@@ -240,23 +262,27 @@ If you want to use this tool, mount the deployment directory into the `esa` serv
 └── THIRD_PARTY_NOTICES.md
 ```
 
-## Versioning
+## 版本策略
 
-The initial release intentionally pins known-working versions of the OpenAI Tunnel Client runtime and `mcp-server-esa`.
+当前首版会固定一组已经实际验证过的 OpenAI Tunnel Client 与 `mcp-server-esa` 版本。
 
-When upgrading either dependency, verify:
+升级依赖时建议至少重新验证：
 
-1. the Tunnel Client release artifact and checksum,
-2. `tools/list` compatibility,
-3. read-only ESA calls,
-4. write operations you intend to enable.
+1. Tunnel Client Release Artifact 与 SHA256
+2. `tools/list` 是否仍兼容 ChatGPT
+3. ESA 只读调用
+4. 你实际需要的写操作
 
-## Upstream projects
+如果上游 `mcp-server-esa` 已修复 Schema 问题，也可以评估移除兼容层。
 
-- OpenAI Tunnel Client: <https://github.com/openai/tunnel-client>
-- Alibaba Cloud ESA MCP Server: <https://github.com/aliyun/mcp-server-esa>
-- GOST: <https://github.com/go-gost/gost>
+## 上游项目
+
+- OpenAI Tunnel Client：<https://github.com/openai/tunnel-client>
+- Alibaba Cloud ESA MCP Server：<https://github.com/aliyun/mcp-server-esa>
+- GOST：<https://github.com/go-gost/gost>
 
 ## License
 
-The original code in this repository is released under the MIT License. Third-party components retain their respective licenses; see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+本仓库原创代码使用 MIT License。
+
+第三方组件继续遵循各自的 License，详见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
