@@ -1,0 +1,50 @@
+name: chatgpt-esa-mcp
+
+services:
+  esa:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    image: chatgpt-esa-mcp-tunnel:local
+    container_name: chatgpt-esa-mcp
+
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    read_only: true
+
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=32m,mode=1777
+
+    cap_drop:
+      - ALL
+
+    security_opt:
+      - no-new-privileges:true
+
+    pids_limit: 128
+
+    mem_limit: 192m
+    mem_reservation: 64m
+
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -fsS
+        - http://127.0.0.1:8080/readyz
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+    stop_grace_period: 20s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
